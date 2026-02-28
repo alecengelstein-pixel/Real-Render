@@ -1,0 +1,83 @@
+{% extends "layout.html" %}
+{% block body %}
+  <div class="row">
+    <div class="card" style="flex: 2; min-width: 520px;">
+      <div style="display:flex; align-items:center; justify-content: space-between;">
+        <div>
+          <h2 style="margin:0;">Job {{ job.id }}</h2>
+          <div class="muted">Customer ref: {{ job.customer_ref or "-" }}</div>
+        </div>
+        <div>
+          <span class="badge">{{ job.status }}</span>
+        </div>
+      </div>
+
+      <h3>QC</h3>
+      <div class="muted">Photos: {{ job.qc.get("photo_count", "-") }}</div>
+      <div class="muted">Median MP: {{ job.qc.get("median_megapixels", "-") }}</div>
+      <div class="muted">Median focus score: {{ job.qc.get("median_focus_score", "-") }}</div>
+      {% if job.qc.get("problems") %}
+        <div class="danger" style="margin-top: 10px;">
+          <strong>QC flags</strong>
+          <ul>
+            {% for p in job.qc.get("problems") %}
+              <li>{{ p }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% else %}
+        <div class="ok" style="margin-top: 10px;"><strong>No QC flags</strong></div>
+      {% endif %}
+
+      <h3>Pipeline</h3>
+      <pre style="white-space: pre-wrap; background:#0f1318; padding:12px; border-radius:12px; border:1px solid #1f2732;">{{ provider_json }}</pre>
+
+      <div style="margin-top: 12px; display:flex; gap:10px; flex-wrap:wrap;">
+        <form action="/jobs/{{ job.id }}/process" method="post">
+          <button class="btn" type="submit">Process</button>
+        </form>
+        <a class="btn secondary" href="/">Back</a>
+        <form action="/jobs/{{ job.id }}/download" method="post">
+          <button class="btn secondary" type="submit">Download outputs zip</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card" style="flex: 1; min-width: 320px;">
+      <h3 style="margin-top:0;">Options</h3>
+      <form action="/jobs/{{ job.id }}/options" method="post">
+        <label>Furnishing</label>
+        <select name="furnishing">
+          {% for v in ["as_is","empty","staged"] %}
+            <option value="{{ v }}" {% if job.options.get("furnishing")==v %}selected{% endif %}>{{ v }}</option>
+          {% endfor %}
+        </select>
+
+        <label>Lighting</label>
+        <select name="lighting">
+          {% for v in ["natural","warm","cool","night"] %}
+            <option value="{{ v }}" {% if job.options.get("lighting")==v %}selected{% endif %}>{{ v }}</option>
+          {% endfor %}
+        </select>
+
+        <label>Deliverables</label>
+        <div class="muted" style="font-size:13px; margin-bottom: 8px;">
+          Reconstruction is typically needed for a true walkthrough. If you only want a marketing video, you can disable reconstruction and rely on video gen.
+        </div>
+        <label style="margin-top:0;">
+          <input type="checkbox" name="reconstruction" value="1" {% if job.options.get("deliverables",{}).get("reconstruction", True) %}checked{% endif %} />
+          Reconstruction
+        </label>
+        <label style="margin-top:0;">
+          <input type="checkbox" name="walkthrough_video" value="1" {% if job.options.get("deliverables",{}).get("walkthrough_video", True) %}checked{% endif %} />
+          Walkthrough video
+        </label>
+
+        <button class="btn" style="margin-top: 12px;" type="submit">Save options</button>
+      </form>
+    </div>
+  </div>
+{% endblock %}
+
+
+

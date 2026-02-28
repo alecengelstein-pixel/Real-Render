@@ -1,0 +1,48 @@
+{% extends "layout.html" %}
+{% block body %}
+  <div class="row">
+    <div class="card" style="flex: 2; min-width: 520px;">
+      <div style="display:flex; align-items:center; justify-content: space-between;">
+        <h2 style="margin:0;">Jobs</h2>
+        <a class="badge" href="/new">New job</a>
+      </div>
+      <p class="muted" style="margin-top:8px;">
+        Drop a <code>.zip</code> into the inbox, or upload one here.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Job</th>
+            <th>Status</th>
+            <th>Photos</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for j in jobs %}
+          <tr>
+            <td><a href="/jobs/{{ j.id }}"><strong>{{ j.id }}</strong></a></td>
+            <td><span class="badge">{{ j.status }}</span></td>
+            <td class="muted">{{ j.qc.get("photo_count", "-") }}</td>
+            <td class="muted">{{ j.created_at }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" style="flex: 1; min-width: 320px;">
+      <h3 style="margin-top:0;">Provider config</h3>
+      <p class="muted" style="margin-top:8px;">
+        This MVP runs locally. Add your keys in <code>env.example</code> (copy to <code>.env</code> on your machine).
+      </p>
+      <div class="muted" style="font-size: 13px;">
+        <div><strong>Luma:</strong> {{ "configured" if luma_ok else "missing" }}</div>
+        <div><strong>Veo:</strong> {{ "configured" if veo_ok else "missing" }}</div>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+
+

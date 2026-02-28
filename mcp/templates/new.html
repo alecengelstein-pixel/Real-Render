@@ -1,0 +1,22 @@
+{% extends "layout.html" %}
+{% block body %}
+  <div class="card" style="max-width: 720px;">
+    <h2 style="margin-top:0;">New job</h2>
+    <p class="muted">Upload a zip of photos. After upload you can set options and process.</p>
+    <form action="/new" method="post" enctype="multipart/form-data">
+      <label>Customer ref (optional)</label>
+      <input type="text" name="customer_ref" placeholder="e.g. Order #1234 / 123 Main St" />
+
+      <label>Photos zip</label>
+      <input type="file" name="zip_file" accept=".zip" required />
+
+      <div style="margin-top: 14px; display:flex; gap: 10px;">
+        <button class="btn" type="submit">Create job</button>
+        <a class="btn secondary" href="/">Cancel</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}
+
+
+
