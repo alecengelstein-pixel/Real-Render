@@ -1,0 +1,233 @@
+{% extends "layout.html" %}
+{% block body %}
+  <!-- Stats row -->
+  <div class="stat-grid" style="margin-bottom: 20px;">
+    <div class="stat-box">
+      <div class="num">{{ stats.total }}</div>
+      <div class="lbl">Total Orders</div>
+    </div>
+    <div class="stat-box">
+      <div class="num" style="color:#fde68a;">{{ stats.queued }}</div>
+      <div class="lbl">Queued</div>
+    </div>
+    <div class="stat-box">
+      <div class="num" style="color:#60a5fa;">{{ stats.processing }}</div>
+      <div class="lbl">Processing</div>
+    </div>
+    <div class="stat-box">
+      <div class="num" style="color:#34d399;">{{ stats.done }}</div>
+      <div class="lbl">Completed</div>
+    </div>
+    <div class="stat-box">
+      <div class="num" style="color:#fca5a5;">{{ stats.error }}</div>
+      <div class="lbl">Errors</div>
+    </div>
+    <div class="stat-box">
+      <div class="num price">${{ "%.2f"|format(stats.revenue) }}</div>
+      <div class="lbl">Revenue</div>
+    </div>
+  </div>
+
+  <!-- Charts row -->
+  <div class="row" style="margin-bottom: 20px;">
+    <div class="card" style="flex: 1; min-width: 280px;">
+      <h3>Orders by Package</h3>
+      <div class="chart-container">
+        <canvas id="packageChart"></canvas>
+      </div>
+    </div>
+    <div class="card" style="flex: 1; min-width: 280px;">
+      <h3>Order Status</h3>
+      <div class="chart-container">
+        <canvas id="statusChart"></canvas>
+      </div>
+    </div>
+    <div class="card" style="flex: 1; min-width: 280px;">
+      <h3>Revenue by Package</h3>
+      <div class="chart-container">
+        <canvas id="revenueChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Orders table -->
+  <div class="row">
+    <div class="card" style="flex: 3; min-width: 520px;">
+      <div style="display:flex; align-items:center; justify-content: space-between; margin-bottom: 16px;">
+        <h3 style="margin:0;">Recent Orders</h3>
+        <a class="btn success" href="/new" style="font-size:13px; padding: 8px 16px;">+ New Order</a>
+      </div>
+
+      {% if jobs %}
+      <table>
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Package</th>
+            <th>Customer</th>
+            <th>Status</th>
+            <th>Rooms</th>
+            <th>Price</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for j in jobs %}
+          <tr style="cursor:pointer;" onclick="window.location='/jobs/{{ j.id }}'">
+            <td>
+              <strong style="color:#e6e6e6;">{{ j.id[:8] }}...</strong>
+              {% if j.customer_ref %}
+                <div class="muted" style="font-size:11px; margin-top:2px;">{{ j.customer_ref }}</div>
+              {% endif %}
+            </td>
+            <td>
+              {% if j.package %}
+                <span class="badge {{ j.package }}">{{ j.package }}</span>
+              {% else %}
+                <span class="muted">legacy</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if j.email %}
+                <span style="font-size:12px;">{{ j.email }}</span>
+              {% else %}
+                <span class="muted">-</span>
+              {% endif %}
+            </td>
+            <td>
+              <span class="badge status-{{ j.status }} {% if j.status == 'processing' %}pulse{% endif %}">{{ j.status }}</span>
+            </td>
+            <td>{{ j.rooms if j.rooms else "-" }}</td>
+            <td class="price">{% if j.total_price_usd %}${{ "%.0f"|format(j.total_price_usd) }}{% else %}-{% endif %}</td>
+            <td class="muted" style="font-size:12px;">{{ j.created_at[:16].replace("T", " ") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-icon">&#x1f4e6;</div>
+        <div style="font-size:16px; color:#9ca3af; margin-bottom:8px;">No orders yet</div>
+        <div style="font-size:13px;">Orders from your website will appear here automatically.</div>
+        <a class="btn" href="/new" style="margin-top:16px; display:inline-block;">Create Test Order</a>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Sidebar -->
+    <div style="flex: 1; min-width: 260px; display:flex; flex-direction:column; gap:16px;">
+      <div class="card">
+        <h3>System Status</h3>
+        <div class="detail-row">
+          <span class="detail-label">Luma API</span>
+          <span class="{{ 'ok' if luma_ok else 'danger' }}">{{ "ready" if luma_ok else "no key" }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Veo API</span>
+          <span class="{{ 'ok' if veo_ok else 'danger' }}">{{ "ready" if veo_ok else "no key" }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Email</span>
+          <span class="{{ 'ok' if smtp_ok else 'danger' }}">{{ "ready" if smtp_ok else "off" }}</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Package Pricing</h3>
+        <div class="detail-row">
+          <span class="detail-label">Essential</span>
+          <span class="price">$79</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Signature</span>
+          <span class="price">$139</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Premium</span>
+          <span class="price">$199</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Extra room</span>
+          <span class="muted">+$30</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const chartFont = { family: '-apple-system,BlinkMacSystemFont,sans-serif', size: 12 };
+    Chart.defaults.color = '#6b7280';
+    Chart.defaults.font = chartFont;
+
+    // Package distribution
+    new Chart(document.getElementById('packageChart'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Essential', 'Signature', 'Premium', 'Other'],
+        datasets: [{
+          data: [{{ stats.by_package.essential }}, {{ stats.by_package.signature }}, {{ stats.by_package.premium }}, {{ stats.by_package.other }}],
+          backgroundColor: ['#059669', '#2563eb', '#d97706', '#374151'],
+          borderWidth: 0,
+          hoverOffset: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '65%',
+        plugins: {
+          legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true, pointStyle: 'circle' } }
+        }
+      }
+    });
+
+    // Status breakdown
+    new Chart(document.getElementById('statusChart'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Queued', 'Processing', 'Done', 'Error'],
+        datasets: [{
+          data: [{{ stats.queued }}, {{ stats.processing }}, {{ stats.done }}, {{ stats.error }}],
+          backgroundColor: ['#d97706', '#2563eb', '#059669', '#dc2626'],
+          borderWidth: 0,
+          hoverOffset: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '65%',
+        plugins: {
+          legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true, pointStyle: 'circle' } }
+        }
+      }
+    });
+
+    // Revenue by package
+    new Chart(document.getElementById('revenueChart'), {
+      type: 'bar',
+      data: {
+        labels: ['Essential', 'Signature', 'Premium'],
+        datasets: [{
+          label: 'Revenue ($)',
+          data: [{{ stats.revenue_by_package.essential }}, {{ stats.revenue_by_package.signature }}, {{ stats.revenue_by_package.premium }}],
+          backgroundColor: ['#059669', '#2563eb', '#d97706'],
+          borderRadius: 6,
+          borderSkipped: false,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { grid: { color: '#1e2330' }, ticks: { callback: v => '$' + v } },
+          x: { grid: { display: false } }
+        }
+      }
+    });
+
+    // Auto-refresh every 10 seconds
+    setTimeout(() => location.reload(), 10000);
+  </script>
+{% endblock %}

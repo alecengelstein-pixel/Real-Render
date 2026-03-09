@@ -1,0 +1,219 @@
+{% extends "layout.html" %}
+{% block body %}
+  <div style="margin-bottom: 16px;">
+    <a href="/" class="muted" style="font-size:13px;">&larr; Back to Orders</a>
+  </div>
+
+  <div class="row">
+    <div style="flex: 2; min-width: 520px; display:flex; flex-direction:column; gap:16px;">
+
+      <!-- Header card -->
+      <div class="card">
+        <div style="display:flex; align-items:center; justify-content: space-between;">
+          <div>
+            <div style="font-size: 20px; font-weight: 700;">{{ job.customer_ref or "Order " + job.id[:8] }}</div>
+            <div class="muted" style="font-size:12px; margin-top:2px;">ID: {{ job.id }}</div>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            {% if job.package %}
+              <span class="badge {{ job.package }}">{{ job.package }}</span>
+            {% endif %}
+            <span class="badge status-{{ job.status }} {% if job.status == 'processing' %}pulse{% endif %}">{{ job.status }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Order details -->
+      <div class="card">
+        <h3>Order Details</h3>
+        <div class="stat-grid" style="margin-bottom: 16px;">
+          <div class="stat-box">
+            <div class="num price">${{ "%.0f"|format(job.total_price_usd) }}</div>
+            <div class="lbl">Total</div>
+          </div>
+          <div class="stat-box">
+            <div class="num">{{ job.rooms }}</div>
+            <div class="lbl">Rooms</div>
+          </div>
+          <div class="stat-box">
+            <div class="num">{{ job.qc.get("photo_count", "-") }}</div>
+            <div class="lbl">Photos</div>
+          </div>
+          <div class="stat-box">
+            <div class="num">{{ job.provider.get("steps", [])|length }}</div>
+            <div class="lbl">Pipeline Steps</div>
+          </div>
+        </div>
+
+        <div class="detail-row">
+          <span class="detail-label">Package</span>
+          <span>{{ (job.package or "standard")|capitalize }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Customer Email</span>
+          <span>{{ job.email or "-" }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Add-ons</span>
+          <span>
+            {% if job.addons %}
+              {% for a in job.addons %}<span class="badge" style="margin:2px;">{{ a.replace("_", " ")|title }}</span>{% endfor %}
+            {% else %}
+              <span class="muted">None</span>
+            {% endif %}
+          </span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Strategy</span>
+          <span>{{ job.provider.get("strategy", "-") }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Furnishing</span>
+          <span>{{ job.options.get("furnishing", "-") }}</span>
+        </div>
+      </div>
+
+      <!-- QC -->
+      <div class="card">
+        <h3>Photo Quality Check</h3>
+        <div class="stat-grid">
+          <div class="stat-box">
+            <div class="num">{{ job.qc.get("photo_count", "-") }}</div>
+            <div class="lbl">Photos</div>
+          </div>
+          <div class="stat-box">
+            <div class="num">{{ "%.1f"|format(job.qc.get("median_megapixels", 0)) if job.qc.get("median_megapixels") else "-" }}</div>
+            <div class="lbl">Median MP</div>
+          </div>
+          <div class="stat-box">
+            <div class="num">{{ "%.1f"|format(job.qc.get("median_focus_score", 0)) if job.qc.get("median_focus_score") else "-" }}</div>
+            <div class="lbl">Focus Score</div>
+          </div>
+        </div>
+        {% if job.qc.get("problems") %}
+          <div class="danger" style="margin-top: 12px; padding:10px; background:#1a0f0f; border-radius:8px;">
+            <strong style="font-size:12px;">QC FLAGS</strong>
+            <ul style="margin:6px 0 0; padding-left:18px; font-size:13px;">
+              {% for p in job.qc.get("problems") %}
+                <li>{{ p }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% elif job.qc.get("photo_count") %}
+          <div class="ok" style="margin-top: 12px; font-size:13px;">All photos passed QC</div>
+        {% endif %}
+      </div>
+
+      <!-- Pipeline -->
+      <div class="card">
+        <h3>Pipeline Progress</h3>
+        {% if job.provider.get("current_phase") %}
+          <div style="margin-bottom:12px; display:flex; gap:8px; align-items:center;">
+            <span class="muted">Phase:</span>
+            <strong>{{ job.provider.get("current_phase") }}</strong>
+            {% if job.status == "processing" %}
+              <span class="badge status-processing pulse">running</span>
+            {% endif %}
+          </div>
+        {% endif %}
+
+        {% if job.provider.get("steps") %}
+        <table style="font-size:12px;">
+          <thead>
+            <tr>
+              <th>Provider</th>
+              <th>Phase</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for step in job.provider.get("steps", []) %}
+            <tr>
+              <td><strong>{{ step.provider }}</strong></td>
+              <td>{{ step.phase }}</td>
+              <td>
+                {% if step.ok %}<span class="ok">success</span>{% else %}<span class="danger">failed</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+
+        {% if job.provider.get("winner") %}
+          <div style="margin-top:12px; padding:10px; background:#0d0f14; border-radius:8px; font-size:13px;">
+            Winner: <strong class="ok">{{ job.provider.get("winner") }}</strong>
+            {% if job.provider.get("total_cost_usd") %}
+              &nbsp;&middot;&nbsp; Pipeline cost: <strong>${{ "%.2f"|format(job.provider.get("total_cost_usd", 0)) }}</strong>
+            {% endif %}
+          </div>
+        {% endif %}
+
+        {% if job.error %}
+          <div class="danger" style="margin-top:12px; padding:12px; background:#1a0f0f; border:1px solid #450a0a; border-radius:10px; font-size:13px;">
+            <strong>Error:</strong> {{ job.error }}
+          </div>
+        {% endif %}
+
+        <details style="margin-top:12px;">
+          <summary class="muted" style="cursor:pointer; font-size:12px;">Raw pipeline JSON</summary>
+          <pre style="white-space: pre-wrap; background:#0d0f14; padding:12px; border-radius:10px; border:1px solid #1e2330; margin-top:8px; font-size:11px; max-height:300px; overflow:auto;">{{ provider_json }}</pre>
+        </details>
+      </div>
+
+      <!-- Actions -->
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        {% if job.status == "queued" %}
+        <form action="/jobs/{{ job.id }}/process" method="post">
+          <button class="btn success" type="submit">Process Now</button>
+        </form>
+        {% endif %}
+        {% if job.status == "done" %}
+        <form action="/jobs/{{ job.id }}/download" method="post">
+          <button class="btn" type="submit">Download All Outputs</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Sidebar: Options -->
+    <div style="flex: 1; min-width: 280px;">
+      <div class="card">
+        <h3>Options</h3>
+        <form action="/jobs/{{ job.id }}/options" method="post">
+          <label>Furnishing</label>
+          <select name="furnishing">
+            {% for v in ["as_is","empty","staged"] %}
+              <option value="{{ v }}" {% if job.options.get("furnishing")==v %}selected{% endif %}>{{ v.replace("_"," ")|title }}</option>
+            {% endfor %}
+          </select>
+
+          <label>Lighting</label>
+          <select name="lighting">
+            {% for v in ["natural","warm","cool","night"] %}
+              <option value="{{ v }}" {% if job.options.get("lighting")==v %}selected{% endif %}>{{ v|title }}</option>
+            {% endfor %}
+          </select>
+
+          <label style="margin-top:14px;">Deliverables</label>
+          <label style="margin-top:4px; display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" name="reconstruction" value="1" {% if job.options.get("deliverables",{}).get("reconstruction", True) %}checked{% endif %} style="width:auto;" />
+            <span>Reconstruction</span>
+          </label>
+          <label style="margin-top:4px; display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" name="walkthrough_video" value="1" {% if job.options.get("deliverables",{}).get("walkthrough_video", True) %}checked{% endif %} style="width:auto;" />
+            <span>Walkthrough video</span>
+          </label>
+
+          <button class="btn" style="margin-top: 16px; width:100%;" type="submit">Save Options</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {% if job.status in ["processing", "queued"] %}
+  <script>
+    setTimeout(() => location.reload(), 5000);
+  </script>
+  {% endif %}
+{% endblock %}

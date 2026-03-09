@@ -1,0 +1,192 @@
+{% extends "layout.html" %}
+{% block body %}
+  <div style="max-width: 800px; margin: 0 auto;">
+    <h2 style="margin-bottom: 4px;">New Order</h2>
+    <p class="muted" style="margin-top:0; font-size:13px;">Simulate an order as it would come from the website.</p>
+
+    <form id="orderForm" action="/new-order" method="post" enctype="multipart/form-data">
+
+      <!-- Step 1: Package -->
+      <div class="section-title" style="margin-top: 24px;">1. Select Package</div>
+      <div class="row" style="margin-bottom: 20px;">
+        <label class="package-card" style="flex:1; min-width:200px;" onclick="selectPackage('essential')">
+          <input type="radio" name="package" value="essential" style="display:none;" />
+          <div class="pkg-name" style="color:#34d399;">Essential</div>
+          <div class="pkg-price">$79</div>
+          <div class="pkg-features">
+            Photos only<br/>
+            As-is furnishing<br/>
+            Luma walkthrough<br/>
+            24-36h delivery
+          </div>
+        </label>
+        <label class="package-card" style="flex:1; min-width:200px;" onclick="selectPackage('signature')">
+          <input type="radio" name="package" value="signature" style="display:none;" />
+          <div class="pkg-name" style="color:#60a5fa;">Signature</div>
+          <div class="pkg-price">$139</div>
+          <div class="pkg-features">
+            Photos only<br/>
+            Virtual staging<br/>
+            Luma + Veo compete<br/>
+            24-36h delivery
+          </div>
+        </label>
+        <label class="package-card" style="flex:1; min-width:200px;" onclick="selectPackage('premium')">
+          <input type="radio" name="package" value="premium" style="display:none;" />
+          <div class="pkg-name" style="color:#fbbf24;">Premium</div>
+          <div class="pkg-price">$199</div>
+          <div class="pkg-features">
+            Photos + 3D scan<br/>
+            Virtual staging<br/>
+            3 refinement rounds<br/>
+            24-36h delivery
+          </div>
+        </label>
+      </div>
+
+      <!-- Step 2: Details -->
+      <div class="section-title">2. Order Details</div>
+      <div class="card" style="margin-bottom: 20px;">
+        <div class="row">
+          <div style="flex:1; min-width:200px;">
+            <label>Customer Email</label>
+            <input type="email" name="email" placeholder="agent@realty.com" required />
+          </div>
+          <div style="flex:1; min-width:200px;">
+            <label>Property Reference</label>
+            <input type="text" name="customer_ref" placeholder="123 Main St, Austin TX" />
+          </div>
+        </div>
+        <div class="row">
+          <div style="flex:1; min-width:200px;">
+            <label>Number of Rooms</label>
+            <select name="rooms" onchange="updatePrice()">
+              <option value="1">1 room</option>
+              <option value="2">2 rooms</option>
+              <option value="3">3 rooms</option>
+              <option value="4">4 rooms</option>
+              <option value="5">5 rooms</option>
+              <option value="6">6 rooms</option>
+              <option value="7">7 rooms</option>
+              <option value="8">8 rooms</option>
+            </select>
+          </div>
+          <div style="flex:1; min-width:200px;">
+            <label>Estimated Total</label>
+            <div id="priceDisplay" style="font-size: 32px; font-weight: 700; color: #34d399; padding: 6px 0;">$0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: Add-ons -->
+      <div class="section-title">3. Add-ons (optional)</div>
+      <div class="card" style="margin-bottom: 20px;">
+        <input type="hidden" name="addons" id="addonsInput" value="" />
+        <div id="addonsList">
+          <span class="addon-chip" onclick="toggleAddon(this, 'rush_delivery')">Rush Delivery</span>
+          <span class="addon-chip" onclick="toggleAddon(this, 'custom_staging')">Custom Staging</span>
+          <span class="addon-chip" onclick="toggleAddon(this, 'twilight_edit')">Twilight Edit</span>
+          <span class="addon-chip" onclick="toggleAddon(this, 'aerial_composite')">Aerial Composite</span>
+          <span class="addon-chip" onclick="toggleAddon(this, 'floor_plan')">Floor Plan</span>
+          <span class="addon-chip" onclick="toggleAddon(this, 'virtual_tour')">360 Virtual Tour</span>
+        </div>
+      </div>
+
+      <!-- Step 4: Upload -->
+      <div class="section-title">4. Upload Photos</div>
+      <div class="card" style="margin-bottom: 20px;">
+        <div id="dropZone" style="border: 2px dashed #1e2330; border-radius: 12px; padding: 40px; text-align: center; cursor: pointer; transition: all .2s;"
+             ondragover="event.preventDefault(); this.style.borderColor='#2563eb'; this.style.background='#111827';"
+             ondragleave="this.style.borderColor='#1e2330'; this.style.background='transparent';"
+             ondrop="handleDrop(event)"
+             onclick="document.getElementById('fileInput').click()">
+          <div style="font-size: 36px; margin-bottom: 8px;">&#x1f4f7;</div>
+          <div style="color: #9ca3af; font-size: 14px;">Drop a .zip file here or click to browse</div>
+          <div id="fileName" style="color: #34d399; margin-top: 8px; font-weight: 500; display:none;"></div>
+        </div>
+        <input type="file" id="fileInput" name="zip_file" accept=".zip" required style="display:none;" onchange="showFileName(this)" />
+      </div>
+
+      <!-- Submit -->
+      <div style="display:flex; gap:12px; align-items:center;">
+        <button class="btn success" type="submit" id="submitBtn" style="padding: 14px 32px; font-size: 16px;" disabled>
+          Submit Order
+        </button>
+        <a class="btn secondary" href="/">Cancel</a>
+        <span id="submitStatus" class="muted" style="font-size:13px;"></span>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    const prices = { essential: 79, signature: 139, premium: 199 };
+    const extraRoom = 30;
+    let selectedPackage = null;
+    let selectedAddons = new Set();
+
+    function selectPackage(pkg) {
+      selectedPackage = pkg;
+      document.querySelectorAll('.package-card').forEach(c => c.classList.remove('selected'));
+      document.querySelector(`input[value="${pkg}"]`).checked = true;
+      document.querySelector(`input[value="${pkg}"]`).closest('.package-card').classList.add('selected');
+      updatePrice();
+      checkReady();
+    }
+
+    function updatePrice() {
+      if (!selectedPackage) return;
+      const rooms = parseInt(document.querySelector('[name="rooms"]').value) || 1;
+      const total = prices[selectedPackage] + Math.max(0, rooms - 1) * extraRoom;
+      document.getElementById('priceDisplay').textContent = '$' + total;
+    }
+
+    function toggleAddon(el, addon) {
+      el.classList.toggle('selected');
+      if (selectedAddons.has(addon)) {
+        selectedAddons.delete(addon);
+      } else {
+        selectedAddons.add(addon);
+      }
+      document.getElementById('addonsInput').value = Array.from(selectedAddons).join(',');
+    }
+
+    function showFileName(input) {
+      const name = input.files[0]?.name;
+      if (name) {
+        const el = document.getElementById('fileName');
+        el.textContent = name;
+        el.style.display = 'block';
+        document.getElementById('dropZone').style.borderColor = '#059669';
+      }
+      checkReady();
+    }
+
+    function handleDrop(e) {
+      e.preventDefault();
+      const dt = e.dataTransfer;
+      const file = dt.files[0];
+      if (file && file.name.endsWith('.zip')) {
+        document.getElementById('fileInput').files = dt.files;
+        showFileName(document.getElementById('fileInput'));
+      }
+      document.getElementById('dropZone').style.borderColor = '#1e2330';
+      document.getElementById('dropZone').style.background = 'transparent';
+    }
+
+    function checkReady() {
+      const hasPackage = selectedPackage !== null;
+      const hasFile = document.getElementById('fileInput').files.length > 0;
+      const hasEmail = document.querySelector('[name="email"]').value.length > 0;
+      document.getElementById('submitBtn').disabled = !(hasPackage && hasFile);
+    }
+
+    document.querySelector('[name="email"]').addEventListener('input', checkReady);
+
+    // Show loading state on submit
+    document.getElementById('orderForm').addEventListener('submit', function() {
+      document.getElementById('submitBtn').textContent = 'Submitting...';
+      document.getElementById('submitBtn').disabled = true;
+      document.getElementById('submitStatus').textContent = 'Creating order and starting pipeline...';
+    });
+  </script>
+{% endblock %}
