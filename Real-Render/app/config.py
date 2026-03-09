@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     cost_per_luma_generation: float = 0.71
     cost_per_veo_generation: float = 1.20
 
+    # Stripe
+    stripe_secret_key: str | None = None
+    stripe_publishable_key: str | None = None
+    stripe_webhook_secret: str | None = None
+
     # Email (Gmail SMTP)
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587

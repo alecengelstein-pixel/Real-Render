@@ -30,6 +30,7 @@ def _build_stats(jobs: list[db.JobRow]) -> dict:
 
     return {
         "total": len(jobs),
+        "pending_payment": sum(1 for j in jobs if j.status == "pending_payment"),
         "queued": sum(1 for j in jobs if j.status == "queued"),
         "processing": sum(1 for j in jobs if j.status == "processing"),
         "done": sum(1 for j in jobs if j.status == "done"),
@@ -220,6 +221,29 @@ def create_app(enqueue_job) -> FastAPI:  # type: ignore[no-untyped-def]
             path=str(zip_path),
             filename=f"{job_id}-outputs.zip",
             media_type="application/zip",
+        )
+
+    @app.get("/checkout/success", response_class=HTMLResponse)
+    def checkout_success(request: Request, session_id: str = "", job_id: str = ""):  # type: ignore[no-untyped-def]
+        return templates.TemplateResponse(
+            "checkout_success.html",
+            {
+                "request": request,
+                "active_page": "",
+                "session_id": session_id,
+                "job_id": job_id,
+            },
+        )
+
+    @app.get("/checkout/cancel", response_class=HTMLResponse)
+    def checkout_cancel(request: Request, job_id: str = ""):  # type: ignore[no-untyped-def]
+        return templates.TemplateResponse(
+            "checkout_cancel.html",
+            {
+                "request": request,
+                "active_page": "",
+                "job_id": job_id,
+            },
         )
 
     return app

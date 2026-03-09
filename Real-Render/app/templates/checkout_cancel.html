@@ -1,0 +1,22 @@
+{% extends "layout.html" %}
+{% block body %}
+<div style="max-width: 600px; margin: 60px auto; text-align: center;">
+  <div class="card">
+    <div style="font-size: 48px; margin-bottom: 16px; color: #fca5a5;">&#10007;</div>
+    <h2 style="margin-top: 0; font-size: 24px;">Payment Cancelled</h2>
+    <p style="color: #9ca3af; font-size: 15px; line-height: 1.6;">
+      Your payment was not completed. No charges have been made.
+    </p>
+
+    {% if job_id %}
+    <p style="color: #9ca3af; font-size: 14px; margin-top: 16px;">
+      Order ID: <strong style="color: #e6e6e6;">{{ job_id }}</strong>
+    </p>
+    {% endif %}
+
+    <div style="margin-top: 24px; display: flex; gap: 12px; justify-content: center;">
+      <a href="/" class="btn secondary">Back to Dashboard</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

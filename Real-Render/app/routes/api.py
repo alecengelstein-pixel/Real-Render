@@ -4,8 +4,9 @@ import logging
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
+from uuid import uuid4
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -13,6 +14,7 @@ from .. import db
 from ..config import settings
 from ..pipeline.ingest import ensure_data_dirs, ingest_zip
 from ..services.cloud.storage import generate_presigned_url, s3_configured
+from ..services.payments import calculate_price, create_checkout_session, handle_webhook
 
 logger = logging.getLogger(__name__)
 
@@ -308,3 +310,169 @@ def serve_input_file(job_id: str, file_path: str) -> FileResponse:
     if not fp.exists() or not fp.is_file():
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(path=str(fp), filename=fp.name)
+
+
+# ---------------------------------------------------------------------------
+# Stripe Checkout
+# ---------------------------------------------------------------------------
+
+class CheckoutRequest(BaseModel):
+    email: str
+    package: str
+    rooms: int = 1
+    addons: list[str] = []
+    customer_ref: str | None = None
+
+
+class CheckoutResponse(BaseModel):
+    checkout_url: str
+    job_id: str
+    total_price_usd: float
+
+
+@router.post("/checkout", response_model=CheckoutResponse, status_code=201)
+def create_checkout(body: CheckoutRequest) -> CheckoutResponse:
+    """Create a Stripe Checkout session.
+
+    Creates a job in 'pending_payment' status (no files uploaded yet),
+    then returns the Stripe hosted checkout URL for the customer to pay.
+    """
+    pkg = body.package.lower()
+    if pkg not in settings.package_prices:
+        raise HTTPException(status_code=400, detail=f"Unknown package: {body.package}")
+
+    # Validate add-ons
+    for addon in body.addons:
+        if addon not in settings.addon_prices:
+            raise HTTPException(status_code=400, detail=f"Unknown add-on: {addon}")
+
+    ensure_data_dirs()
+
+    # Create a job_id and placeholder directories (files uploaded later)
+    job_id = uuid4().hex[:12]
+    job_root = Path(settings.mcp_data_dir) / "jobs" / job_id
+    input_dir = job_root / "input"
+    outputs_dir = job_root / "outputs"
+    input_dir.mkdir(parents=True, exist_ok=True)
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+
+    # Calculate price
+    total, _ = calculate_price(pkg, body.rooms, body.addons)
+
+    try:
+        checkout_url, session_id, total = create_checkout_session(
+            job_id=job_id,
+            package=pkg,
+            rooms=body.rooms,
+            addons=body.addons,
+            email=body.email,
+            customer_ref=body.customer_ref,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    # Persist the job in pending_payment status
+    db.create_job(
+        job_id=job_id,
+        input_dir=str(input_dir),
+        outputs_dir=str(outputs_dir),
+        customer_ref=body.customer_ref,
+        options={},
+        package=pkg,
+        email=body.email,
+        rooms=body.rooms,
+        addons=body.addons,
+        total_price_usd=total,
+        status="pending_payment",
+        stripe_session_id=session_id,
+    )
+
+    return CheckoutResponse(
+        checkout_url=checkout_url,
+        job_id=job_id,
+        total_price_usd=total,
+    )
+
+
+@router.post("/webhooks/stripe")
+async def stripe_webhook(request: Request) -> dict[str, str]:
+    """Handle Stripe webhook events (e.g. checkout.session.completed)."""
+    payload = await request.body()
+    sig = request.headers.get("stripe-signature", "")
+
+    if not sig:
+        raise HTTPException(status_code=400, detail="Missing Stripe-Signature header")
+
+    try:
+        result = handle_webhook(payload, sig)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"status": "ok", "event": result.get("event", "")}
+
+
+# ---------------------------------------------------------------------------
+# Photo upload (post-payment)
+# ---------------------------------------------------------------------------
+
+@router.post("/jobs/{job_id}/upload", response_model=JobDetail, status_code=200)
+async def upload_photos(
+    job_id: str,
+    zip_file: UploadFile = File(...),
+) -> JobDetail:
+    """Upload photos for a job that has already been paid for.
+
+    Accepts a zip file, extracts it into the job's input directory,
+    and enqueues the job for processing if it is in 'queued' status.
+    """
+    job = db.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status not in ("queued", "pending_payment"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job is in '{job.status}' status; upload is only allowed for 'queued' or 'pending_payment' jobs",
+        )
+
+    # Extract zip into job's input directory
+    input_dir = Path(job.input_dir)
+    input_dir.mkdir(parents=True, exist_ok=True)
+
+    import shutil
+    import zipfile
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td) / (zip_file.filename or "upload.zip")
+        with tmp.open("wb") as f:
+            f.write(await zip_file.read())
+
+        with zipfile.ZipFile(tmp, "r") as zipf:
+            zipf.extractall(input_dir)
+
+    # Flatten nested single folder (common in uploads)
+    children = [c for c in input_dir.iterdir() if c.name not in ("__MACOSX",)]
+    if len(children) == 1 and children[0].is_dir():
+        nested = children[0]
+        for item in nested.iterdir():
+            shutil.move(str(item), str(input_dir / item.name))
+        shutil.rmtree(nested, ignore_errors=True)
+
+    # For Premium: copy 3D scan files to outputs
+    if job.package == "premium":
+        outputs_dir = Path(job.outputs_dir)
+        _3d_exts = {".glb", ".gltf", ".ply"}
+        for fp in input_dir.iterdir():
+            if fp.is_file() and fp.suffix.lower() in _3d_exts:
+                shutil.copy2(fp, outputs_dir / fp.name)
+
+    # Enqueue for processing if payment is done (status == queued)
+    if job.status == "queued" and _enqueue_fn is not None:
+        _enqueue_fn(job_id)
+
+    job = db.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=500, detail="Job lost after upload")
+    return _job_detail(job)

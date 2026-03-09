@@ -32,6 +32,7 @@ class JobRow:
     rooms: int = 1
     addons_json: str = "[]"
     total_price_usd: float = 0.0
+    stripe_session_id: str | None = None
 
     @property
     def options(self) -> dict[str, Any]:
@@ -82,7 +83,8 @@ def init_db() -> None:
               email TEXT,
               rooms INTEGER DEFAULT 1,
               addons_json TEXT DEFAULT '[]',
-              total_price_usd REAL DEFAULT 0
+              total_price_usd REAL DEFAULT 0,
+              stripe_session_id TEXT
             );
             """
         )
@@ -96,6 +98,7 @@ def init_db() -> None:
             ("rooms", "INTEGER DEFAULT 1"),
             ("addons_json", "TEXT DEFAULT '[]'"),
             ("total_price_usd", "REAL DEFAULT 0"),
+            ("stripe_session_id", "TEXT"),
         ]
         for col_name, col_type in new_cols:
             if not _table_has_column(conn, "jobs", col_name):
@@ -114,6 +117,8 @@ def create_job(
     rooms: int = 1,
     addons: list[str] | None = None,
     total_price_usd: float = 0.0,
+    status: str = "queued",
+    stripe_session_id: str | None = None,
 ) -> None:
     now = _utc_now_iso()
     with get_conn() as conn:
@@ -122,15 +127,15 @@ def create_job(
             INSERT INTO jobs (
               id, created_at, updated_at, status, customer_ref,
               input_dir, outputs_dir, options_json, qc_json, provider_json, error,
-              package, email, rooms, addons_json, total_price_usd
+              package, email, rooms, addons_json, total_price_usd, stripe_session_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 job_id,
                 now,
                 now,
-                "queued",
+                status,
                 customer_ref,
                 input_dir,
                 outputs_dir,
@@ -143,6 +148,7 @@ def create_job(
                 rooms,
                 json.dumps(addons or []),
                 total_price_usd,
+                stripe_session_id,
             ),
         )
 
@@ -184,6 +190,14 @@ def update_job(
 def get_job(job_id: str) -> JobRow | None:
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM jobs WHERE id = ?;", (job_id,)).fetchone()
+    return JobRow(**dict(row)) if row else None
+
+
+def get_job_by_stripe_session(session_id: str) -> JobRow | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM jobs WHERE stripe_session_id = ?;", (session_id,)
+        ).fetchone()
     return JobRow(**dict(row)) if row else None
 
 

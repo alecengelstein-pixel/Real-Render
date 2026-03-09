@@ -1,0 +1,29 @@
+{% extends "layout.html" %}
+{% block body %}
+<div style="max-width: 600px; margin: 60px auto; text-align: center;">
+  <div class="card">
+    <div style="font-size: 48px; margin-bottom: 16px; color: #34d399;">&#10003;</div>
+    <h2 style="margin-top: 0; font-size: 24px;">Payment Successful</h2>
+    <p style="color: #9ca3af; font-size: 15px; line-height: 1.6;">
+      Thank you for your order! Your payment has been received.
+    </p>
+
+    {% if job_id %}
+    <p style="color: #9ca3af; font-size: 14px; margin-top: 16px;">
+      Your order ID is <strong style="color: #e6e6e6;">{{ job_id }}</strong>
+    </p>
+    {% endif %}
+
+    <p style="color: #9ca3af; font-size: 14px; margin-top: 16px; line-height: 1.6;">
+      Next step: upload your property photos so we can begin processing your renders.
+    </p>
+
+    <div style="margin-top: 24px; display: flex; gap: 12px; justify-content: center;">
+      {% if job_id %}
+      <a href="/jobs/{{ job_id }}" class="btn success">View Order</a>
+      {% endif %}
+      <a href="/" class="btn secondary">Back to Dashboard</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
