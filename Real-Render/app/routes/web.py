@@ -10,10 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from . import db
+from .. import db
 from .api import router as api_router, set_enqueue_fn
-from .config import settings
-from .ingest import ensure_data_dirs, ingest_zip
+from ..config import settings
+from ..pipeline.ingest import ensure_data_dirs, ingest_zip
 
 
 def _build_stats(jobs: list[db.JobRow]) -> dict:
@@ -60,7 +60,7 @@ def create_app(enqueue_job) -> FastAPI:  # type: ignore[no-untyped-def]
     set_enqueue_fn(enqueue_job)
     app.include_router(api_router)
 
-    templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+    templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):  # type: ignore[no-untyped-def]
@@ -105,7 +105,9 @@ def create_app(enqueue_job) -> FastAPI:  # type: ignore[no-untyped-def]
         addon_list = [a.strip() for a in addons.split(",") if a.strip()]
         base_price = prices[pkg]
         extra_rooms = max(0, rooms - 1)
-        total = base_price + (extra_rooms * settings.price_per_extra_room)
+        room_rate = settings.price_per_extra_room.get(pkg, 30.0)
+        addon_total = sum(settings.addon_prices.get(a, 0.0) for a in addon_list)
+        total = base_price + (extra_rooms * room_rate) + addon_total
 
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td) / (zip_file.filename or "upload.zip")

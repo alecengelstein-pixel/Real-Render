@@ -4,9 +4,9 @@ import uvicorn
 
 from . import db
 from .config import settings
-from .inbox_watcher import start_inbox_watcher
-from .queue_worker import start_worker_and_return_enqueuer
-from .web import create_app
+from .services.inbox_watcher import start_inbox_watcher
+from .pipeline.queue import start_worker_and_return_enqueuer
+from .routes.web import create_app
 
 
 def main() -> None:
@@ -21,6 +21,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-
-

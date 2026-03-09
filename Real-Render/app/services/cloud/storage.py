@@ -8,7 +8,7 @@ from typing import Any
 import boto3
 from botocore.config import Config as BotoConfig
 
-from .config import settings
+from ...config import settings
 
 logger = logging.getLogger(__name__)
 

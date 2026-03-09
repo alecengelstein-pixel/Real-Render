@@ -4,8 +4,8 @@ import queue
 import threading
 from typing import Callable
 
-from . import db
-from .pipeline import process_job
+from .. import db
+from .core import process_job
 
 
 class JobQueue:

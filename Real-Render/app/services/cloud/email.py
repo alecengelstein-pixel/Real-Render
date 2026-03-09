@@ -5,8 +5,8 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-from . import db
-from .config import settings
+from ... import db
+from ...config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ def send_completion_email(job_id: str) -> None:
     job_url = f"{base_url}/api/v1/jobs/{job.id}"
 
     # Build artifact links
-    from .api import _artifacts_from_job
+    from ...routes.api import _artifacts_from_job
     artifacts = _artifacts_from_job(job)
     artifact_lines = "\n".join(
         f"  - {a.filename}: {a.download_url}" for a in artifacts

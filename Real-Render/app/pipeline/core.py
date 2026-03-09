@@ -6,15 +6,15 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-from . import db
-from .config import settings
-from .cost_tracker import can_afford
-from .providers.base import ProviderResult
-from .providers.luma import LumaProvider
-from .providers.veo import VeoProvider
-from .qc import run_qc
-from .storage import s3_configured, upload_job_outputs
-from .video_utils import assess_video_quality, extract_keyframe, ffmpeg_available
+from .. import db
+from ..config import settings
+from ..services.cost_tracker import can_afford
+from ..providers.base import ProviderResult
+from ..providers.luma import LumaProvider
+from ..providers.veo import VeoProvider
+from ..services.media.qc import run_qc
+from ..services.cloud.storage import s3_configured, upload_job_outputs
+from ..services.media.video import assess_video_quality, extract_keyframe, ffmpeg_available
 
 logger = logging.getLogger(__name__)
 
@@ -273,7 +273,7 @@ def process_job(job_id: str) -> None:
 
     # Send completion email
     try:
-        from .notifications import send_completion_email
+        from ..services.cloud.email import send_completion_email
         send_completion_email(job_id)
     except Exception:
         logger.exception("Failed to send completion email for job %s", job_id)

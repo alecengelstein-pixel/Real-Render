@@ -8,8 +8,8 @@ from typing import Callable
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-from .config import settings
-from .ingest import ingest_zip
+from ..config import settings
+from ..pipeline.ingest import ingest_zip
 
 
 class _ZipHandler(FileSystemEventHandler):

@@ -4,8 +4,8 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from .config import settings
-from .db import get_conn
+from ..config import settings
+from ..db import get_conn
 
 logger = logging.getLogger(__name__)
 

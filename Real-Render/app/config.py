@@ -65,7 +65,20 @@ class Settings(BaseSettings):
         "signature": 139.0,
         "premium": 199.0,
     }
-    price_per_extra_room: float = 30.0
+    price_per_extra_room: dict = {
+        "essential": 20.0,
+        "signature": 30.0,
+        "premium": 40.0,
+    }
+
+    # Add-on pricing
+    addon_prices: dict = {
+        "rush_delivery": 140.0,
+        "extra_revision": 35.0,
+        "custom_staging": 70.0,
+        "instagram_carousel": 35.0,
+        "unique_request": 0.0,  # custom pricing, handled manually
+    }
 
 
 settings = Settings()

@@ -9,10 +9,10 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from . import db
-from .config import settings
-from .ingest import ensure_data_dirs, ingest_zip
-from .storage import generate_presigned_url, s3_configured
+from .. import db
+from ..config import settings
+from ..pipeline.ingest import ensure_data_dirs, ingest_zip
+from ..services.cloud.storage import generate_presigned_url, s3_configured
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +199,9 @@ async def create_order(
     addon_list = [a.strip() for a in addons.split(",") if a.strip()] if addons else []
     base_price = prices[pkg]
     extra_rooms = max(0, rooms - 1)
-    total = base_price + (extra_rooms * settings.price_per_extra_room)
+    room_rate = settings.price_per_extra_room.get(pkg, 30.0)
+    addon_total = sum(settings.addon_prices.get(a, 0.0) for a in addon_list)
+    total = base_price + (extra_rooms * room_rate) + addon_total
 
     ensure_data_dirs()
     with tempfile.TemporaryDirectory() as td:
