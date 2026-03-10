@@ -15,6 +15,7 @@ from ..providers.veo import VeoProvider
 from ..services.media.qc import run_qc
 from ..services.cloud.storage import s3_configured, upload_job_outputs
 from ..services.media.video import assess_video_quality, extract_keyframe, ffmpeg_available
+from ..services.remotion import remotion_available, render_branded_video, render_instagram_carousel
 
 logger = logging.getLogger(__name__)
 
@@ -260,6 +261,61 @@ def process_job(job_id: str) -> None:
             logger.info("Canonical output → %s (from %s)", canonical, final_winner)
 
     provider_state["total_cost_usd"] = total_cost
+
+    # ------------------------------------------------------------------
+    # Phase 4b: POLISH — apply Remotion branding (intro/outro overlays)
+    # ------------------------------------------------------------------
+    canonical = Path(outputs_dir) / f"{job_id}_walkthrough.mp4"
+    if canonical.exists() and remotion_available():
+        _update_phase(provider_state, job_id, "polish")
+        address = options.get("property_address", job.options.get("property_address", ""))
+        agent_name = options.get("agent_name", job.options.get("agent_name", ""))
+
+        # Render branded walkthrough
+        polished_mp4 = Path(outputs_dir) / f"{job_id}_walkthrough_branded.mp4"
+        try:
+            branded_ok = render_branded_video(
+                raw_mp4=str(canonical),
+                output_mp4=str(polished_mp4),
+                address=address,
+                agent_name=agent_name,
+            )
+            if branded_ok and polished_mp4.exists():
+                # Replace the canonical file with the branded version
+                shutil.copy2(polished_mp4, canonical)
+                provider_state["polish"] = {"branded": True, "branded_path": str(polished_mp4)}
+                logger.info("Branded video replaced canonical: %s", canonical)
+            else:
+                provider_state["polish"] = {"branded": False, "reason": "render returned false"}
+                logger.warning("Remotion branded render failed; using raw video")
+        except Exception:
+            provider_state["polish"] = {"branded": False, "reason": "exception"}
+            logger.exception("Remotion branded render raised an exception; using raw video")
+
+        # Render Instagram carousel if requested as an add-on
+        job_addons = job.addons if hasattr(job, "addons") else []
+        if "instagram_carousel" in job_addons:
+            carousel_dir = str(Path(outputs_dir) / f"{job_id}_carousel")
+            try:
+                carousel_clips = render_instagram_carousel(
+                    raw_mp4=str(canonical),
+                    output_dir=carousel_dir,
+                    address=address,
+                )
+                if carousel_clips:
+                    provider_state["polish"]["carousel"] = True
+                    provider_state["polish"]["carousel_clips"] = carousel_clips
+                    logger.info("Carousel rendered: %d clips", len(carousel_clips))
+                else:
+                    provider_state.setdefault("polish", {})["carousel"] = False
+                    logger.warning("Carousel render produced no clips")
+            except Exception:
+                provider_state.setdefault("polish", {})["carousel"] = False
+                logger.exception("Carousel render failed; skipping")
+
+        db.update_job(job_id, provider=provider_state)
+    elif not remotion_available():
+        logger.info("Remotion not available — skipping polish phase")
 
     # Upload all artifacts to S3/R2 if configured
     if s3_configured():

@@ -1,0 +1,23 @@
+{
+  "name": "real-render-remotion",
+  "version": "1.0.0",
+  "description": "Remotion compositions for Open Door Cinematic video post-processing",
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "ts-node src/render.ts",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.242",
+    "@remotion/renderer": "4.0.242",
+    "remotion": "4.0.242",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.5.0",
+    "ts-node": "^10.9.2"
+  }
+}
