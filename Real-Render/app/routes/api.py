@@ -373,6 +373,9 @@ class CheckoutRequest(BaseModel):
     rooms: int = 1
     addons: list[str] = []
     customer_ref: str | None = None
+    property_address: str = ""
+    agent_name: str = ""
+    staging_style: str = "modern"
 
 
 class CheckoutResponse(BaseModel):
@@ -428,7 +431,11 @@ def create_checkout(body: CheckoutRequest) -> CheckoutResponse:
         input_dir=str(input_dir),
         outputs_dir=str(outputs_dir),
         customer_ref=body.customer_ref,
-        options={},
+        options={
+            "property_address": body.property_address,
+            "agent_name": body.agent_name,
+            "staging_style": body.staging_style,
+        },
         package=pkg,
         email=body.email,
         rooms=body.rooms,
