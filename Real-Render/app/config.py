@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     mcp_data_dir: str = "./data"
     mcp_inbox_dir: str = "./data/inbox"
     mcp_db_path: str = "./data/mcp.sqlite3"
+
+    # Supabase
+    supabase_url: str | None = None
+    supabase_key: str | None = None
     mcp_host: str = "127.0.0.1"
     mcp_port: int = 8000
 

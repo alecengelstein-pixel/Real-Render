@@ -51,6 +51,51 @@ class JobRow:
         return json.loads(self.addons_json) if self.addons_json else []
 
 
+# ---------------------------------------------------------------------------
+# Supabase backend
+# ---------------------------------------------------------------------------
+
+_supabase_client = None
+
+
+def _use_supabase() -> bool:
+    return bool(settings.supabase_url and settings.supabase_key)
+
+
+def _get_supabase():
+    global _supabase_client
+    if _supabase_client is None:
+        from supabase import create_client
+        _supabase_client = create_client(settings.supabase_url, settings.supabase_key)
+    return _supabase_client
+
+
+def _row_from_supabase(row: dict) -> JobRow:
+    return JobRow(
+        id=row["id"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+        status=row["status"],
+        customer_ref=row.get("customer_ref"),
+        input_dir=row.get("input_dir", ""),
+        outputs_dir=row.get("outputs_dir", ""),
+        options_json=row.get("options_json", "{}"),
+        qc_json=row.get("qc_json", "{}"),
+        provider_json=row.get("provider_json", "{}"),
+        error=row.get("error"),
+        package=row.get("package"),
+        email=row.get("email"),
+        rooms=row.get("rooms", 1),
+        addons_json=row.get("addons_json", "[]"),
+        total_price_usd=row.get("total_price_usd", 0.0),
+        stripe_session_id=row.get("stripe_session_id"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# SQLite backend (fallback)
+# ---------------------------------------------------------------------------
+
 def get_conn() -> sqlite3.Connection:
     Path(settings.mcp_db_path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(settings.mcp_db_path)
@@ -63,7 +108,22 @@ def _table_has_column(conn: sqlite3.Connection, table: str, column: str) -> bool
     return any(c["name"] == column for c in cols)
 
 
+# ---------------------------------------------------------------------------
+# Public API — routes to Supabase or SQLite
+# ---------------------------------------------------------------------------
+
 def init_db() -> None:
+    if _use_supabase():
+        # Supabase table is created via SQL editor — just verify connection
+        try:
+            sb = _get_supabase()
+            sb.table("jobs").select("id").limit(1).execute()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("Supabase connection check failed: %s", e)
+        return
+
+    # SQLite fallback
     with get_conn() as conn:
         conn.execute(
             """
@@ -91,7 +151,6 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at);")
 
-        # Migrate existing tables that lack the new columns
         new_cols = [
             ("package", "TEXT"),
             ("email", "TEXT"),
@@ -121,6 +180,29 @@ def create_job(
     stripe_session_id: str | None = None,
 ) -> None:
     now = _utc_now_iso()
+
+    if _use_supabase():
+        _get_supabase().table("jobs").insert({
+            "id": job_id,
+            "created_at": now,
+            "updated_at": now,
+            "status": status,
+            "customer_ref": customer_ref,
+            "input_dir": input_dir,
+            "outputs_dir": outputs_dir,
+            "options_json": json.dumps(options),
+            "qc_json": json.dumps({}),
+            "provider_json": json.dumps({}),
+            "error": None,
+            "package": package,
+            "email": email,
+            "rooms": rooms,
+            "addons_json": json.dumps(addons or []),
+            "total_price_usd": total_price_usd,
+            "stripe_session_id": stripe_session_id,
+        }).execute()
+        return
+
     with get_conn() as conn:
         conn.execute(
             """
@@ -132,23 +214,12 @@ def create_job(
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
-                job_id,
-                now,
-                now,
-                status,
-                customer_ref,
-                input_dir,
-                outputs_dir,
-                json.dumps(options),
-                json.dumps({}),
-                json.dumps({}),
-                None,
-                package,
-                email,
-                rooms,
+                job_id, now, now, status, customer_ref,
+                input_dir, outputs_dir,
+                json.dumps(options), json.dumps({}), json.dumps({}), None,
+                package, email, rooms,
                 json.dumps(addons or []),
-                total_price_usd,
-                stripe_session_id,
+                total_price_usd, stripe_session_id,
             ),
         )
 
@@ -162,24 +233,28 @@ def update_job(
     provider: dict[str, Any] | None = None,
     error: str | None = None,
 ) -> None:
-    fields: list[str] = ["updated_at = ?"]
-    values: list[Any] = [_utc_now_iso()]
+    updates: dict[str, Any] = {"updated_at": _utc_now_iso()}
 
     if status is not None:
-        fields.append("status = ?")
-        values.append(status)
+        updates["status"] = status
     if options is not None:
-        fields.append("options_json = ?")
-        values.append(json.dumps(options))
+        updates["options_json"] = json.dumps(options)
     if qc is not None:
-        fields.append("qc_json = ?")
-        values.append(json.dumps(qc))
+        updates["qc_json"] = json.dumps(qc)
     if provider is not None:
-        fields.append("provider_json = ?")
-        values.append(json.dumps(provider))
+        updates["provider_json"] = json.dumps(provider)
     if error is not None:
-        fields.append("error = ?")
-        values.append(error)
+        updates["error"] = error
+
+    if _use_supabase():
+        _get_supabase().table("jobs").update(updates).eq("id", job_id).execute()
+        return
+
+    fields: list[str] = []
+    values: list[Any] = []
+    for k, v in updates.items():
+        fields.append(f"{k} = ?")
+        values.append(v)
 
     values.append(job_id)
     sql = f"UPDATE jobs SET {', '.join(fields)} WHERE id = ?;"
@@ -188,12 +263,22 @@ def update_job(
 
 
 def get_job(job_id: str) -> JobRow | None:
+    if _use_supabase():
+        result = _get_supabase().table("jobs").select("*").eq("id", job_id).execute()
+        rows = result.data
+        return _row_from_supabase(rows[0]) if rows else None
+
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM jobs WHERE id = ?;", (job_id,)).fetchone()
     return JobRow(**dict(row)) if row else None
 
 
 def get_job_by_stripe_session(session_id: str) -> JobRow | None:
+    if _use_supabase():
+        result = _get_supabase().table("jobs").select("*").eq("stripe_session_id", session_id).execute()
+        rows = result.data
+        return _row_from_supabase(rows[0]) if rows else None
+
     with get_conn() as conn:
         row = conn.execute(
             "SELECT * FROM jobs WHERE stripe_session_id = ?;", (session_id,)
@@ -202,11 +287,12 @@ def get_job_by_stripe_session(session_id: str) -> JobRow | None:
 
 
 def list_jobs(limit: int = 50) -> list[JobRow]:
+    if _use_supabase():
+        result = _get_supabase().table("jobs").select("*").order("created_at", desc=True).limit(limit).execute()
+        return [_row_from_supabase(r) for r in result.data]
+
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?;", (limit,)
         ).fetchall()
     return [JobRow(**dict(r)) for r in rows]
-
-
-
