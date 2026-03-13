@@ -116,14 +116,14 @@ def create_checkout_session(
             "quantity": item["quantity"],
         })
 
-    base_url = (settings.public_base_url or "http://localhost:8000").rstrip("/")
+    frontend_url = (settings.frontend_base_url or settings.public_base_url or "http://localhost:8000").rstrip("/")
 
     session = stripe.checkout.Session.create(
         mode="payment",
         line_items=stripe_line_items,
         customer_email=email,
-        success_url=f"{base_url}/checkout/success?session_id={{CHECKOUT_SESSION_ID}}&job_id={job_id}",
-        cancel_url=f"{base_url}/checkout/cancel?job_id={job_id}",
+        success_url=f"{frontend_url}/checkout/success?session_id={{CHECKOUT_SESSION_ID}}&job_id={job_id}",
+        cancel_url=f"{frontend_url}/checkout/cancel?job_id={job_id}",
         metadata={
             "job_id": job_id,
             "package": package,

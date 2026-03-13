@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # Public URL (tunnel or deployed domain, for serving images to external APIs)
     public_base_url: str | None = None
 
+    # Frontend URL (Lovable app — where Stripe redirects after payment)
+    frontend_base_url: str = "https://opendoorcinematic.com"
+
     # CORS
     cors_allowed_origins: str = "*"
 
