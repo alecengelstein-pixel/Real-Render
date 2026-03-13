@@ -221,7 +221,8 @@ async def create_order(
         )
 
     if _enqueue_fn is not None:
-        _enqueue_fn(job_id)
+        rush = "rush_delivery" in addon_list
+        _enqueue_fn(job_id, rush=rush)
 
     job = db.get_job(job_id)
     if not job:
@@ -236,7 +237,8 @@ def process_job(job_id: str) -> JobDetail:
         raise HTTPException(status_code=404, detail="Job not found")
     if _enqueue_fn is None:
         raise HTTPException(status_code=503, detail="Processing not available")
-    _enqueue_fn(job_id)
+    rush = "rush_delivery" in job.addons
+    _enqueue_fn(job_id, rush=rush)
     job = db.get_job(job_id)
     if not job:
         raise HTTPException(status_code=500, detail="Job lost after enqueue")
@@ -310,6 +312,55 @@ def serve_input_file(job_id: str, file_path: str) -> FileResponse:
     if not fp.exists() or not fp.is_file():
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(path=str(fp), filename=fp.name)
+
+
+# ---------------------------------------------------------------------------
+# Revision (re-run pipeline with feedback)
+# ---------------------------------------------------------------------------
+
+class RevisionRequest(BaseModel):
+    feedback: str = ""
+    staging_style: str | None = None
+    lighting: str | None = None
+
+
+@router.post("/jobs/{job_id}/revise", response_model=JobDetail)
+def revise_job(job_id: str, body: RevisionRequest) -> JobDetail:
+    """Re-run the pipeline for a completed job (Extra Revision add-on).
+
+    Accepts optional feedback to adjust staging style, lighting, etc.
+    """
+    job = db.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status not in ("done", "error"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job is '{job.status}'; revisions only apply to completed or errored jobs",
+        )
+
+    if _enqueue_fn is None:
+        raise HTTPException(status_code=503, detail="Processing not available")
+
+    # Update options with revision feedback
+    opts = dict(job.options)
+    opts["revision_feedback"] = body.feedback
+    if body.staging_style:
+        opts["staging_style"] = body.staging_style
+    if body.lighting:
+        opts["lighting"] = body.lighting
+    opts["is_revision"] = True
+
+    db.update_job(job_id, status="queued", options=opts, error=None)
+
+    rush = "rush_delivery" in job.addons
+    _enqueue_fn(job_id, rush=rush)
+
+    job = db.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=500, detail="Job lost after revision enqueue")
+    return _job_detail(job)
 
 
 # ---------------------------------------------------------------------------
@@ -470,7 +521,8 @@ async def upload_photos(
 
     # Enqueue for processing if payment is done (status == queued)
     if job.status == "queued" and _enqueue_fn is not None:
-        _enqueue_fn(job_id)
+        rush = "rush_delivery" in job.addons
+        _enqueue_fn(job_id, rush=rush)
 
     job = db.get_job(job_id)
     if not job:

@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     cost_per_luma_generation: float = 0.71
     cost_per_veo_generation: float = 1.20
 
+    # Gemini image generation (virtual staging) — uses same API key as Veo
+    gemini_image_model: str = "gemini-2.0-flash-exp"
+    cost_per_staging_image: float = 0.05
+
+    # 3D reconstruction (Premium tier)
+    cost_per_reconstruction: float = 1.00
+
     # Stripe
     stripe_secret_key: str | None = None
     stripe_publishable_key: str | None = None
