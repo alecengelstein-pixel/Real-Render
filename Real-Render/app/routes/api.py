@@ -464,6 +464,30 @@ async def stripe_webhook(request: Request) -> dict[str, str]:
     return {"status": "ok", "event": result.get("event", "")}
 
 
+@router.post("/jobs/{job_id}/confirm-payment", response_model=JobDetail)
+def confirm_payment(job_id: str) -> JobDetail:
+    """Manual payment confirmation — use this to bypass Stripe webhook during testing.
+
+    Moves a job from 'pending_payment' to 'queued' so photos can be uploaded
+    and the pipeline can run.
+    """
+    job = db.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status not in ("pending_payment", "queued"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job is '{job.status}'; confirm-payment only works for pending_payment or queued jobs",
+        )
+
+    db.update_job(job_id, status="queued")
+    job = db.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=500, detail="Job lost after update")
+    return _job_detail(job)
+
+
 # ---------------------------------------------------------------------------
 # Photo upload (post-payment)
 # ---------------------------------------------------------------------------
