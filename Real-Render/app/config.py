@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     s3_presigned_url_expiry: int = 3600
 
     # Public URL (tunnel or deployed domain, for serving images to external APIs)
-    public_base_url: str | None = None
+    public_base_url: str = "https://real-render-production.up.railway.app"
 
     # Frontend URL (Lovable app — where Stripe redirects after payment)
     frontend_base_url: str = "https://opendoorcinematic.com"
