@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from .config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now_iso() -> str:
@@ -52,22 +57,42 @@ class JobRow:
 
 
 # ---------------------------------------------------------------------------
-# Supabase backend
+# Supabase backend (direct REST API via httpx — no supabase-py dependency)
 # ---------------------------------------------------------------------------
-
-_supabase_client = None
-
 
 def _use_supabase() -> bool:
     return bool(settings.supabase_url and settings.supabase_key)
 
 
-def _get_supabase():
-    global _supabase_client
-    if _supabase_client is None:
-        from supabase import create_client
-        _supabase_client = create_client(settings.supabase_url, settings.supabase_key)
-    return _supabase_client
+def _sb_headers() -> dict[str, str]:
+    return {
+        "apikey": settings.supabase_key,
+        "Authorization": f"Bearer {settings.supabase_key}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+    }
+
+
+def _sb_url(path: str) -> str:
+    return f"{settings.supabase_url.rstrip('/')}/rest/v1/{path}"
+
+
+def _sb_get(path: str, params: dict | None = None) -> list[dict]:
+    resp = httpx.get(_sb_url(path), headers=_sb_headers(), params=params or {}, timeout=15)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _sb_post(path: str, data: dict) -> list[dict]:
+    resp = httpx.post(_sb_url(path), headers=_sb_headers(), json=data, timeout=15)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _sb_patch(path: str, data: dict, params: dict | None = None) -> list[dict]:
+    resp = httpx.patch(_sb_url(path), headers=_sb_headers(), json=data, params=params or {}, timeout=15)
+    resp.raise_for_status()
+    return resp.json()
 
 
 def _row_from_supabase(row: dict) -> JobRow:
@@ -114,13 +139,11 @@ def _table_has_column(conn: sqlite3.Connection, table: str, column: str) -> bool
 
 def init_db() -> None:
     if _use_supabase():
-        # Supabase table is created via SQL editor — just verify connection
         try:
-            sb = _get_supabase()
-            sb.table("jobs").select("id").limit(1).execute()
+            rows = _sb_get("jobs", {"select": "id", "limit": "1"})
+            logger.info("Supabase connection OK (%d rows)", len(rows))
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning("Supabase connection check failed: %s", e)
+            logger.warning("Supabase connection check failed: %s", e)
         return
 
     # SQLite fallback
@@ -182,7 +205,7 @@ def create_job(
     now = _utc_now_iso()
 
     if _use_supabase():
-        _get_supabase().table("jobs").insert({
+        _sb_post("jobs", {
             "id": job_id,
             "created_at": now,
             "updated_at": now,
@@ -200,7 +223,7 @@ def create_job(
             "addons_json": json.dumps(addons or []),
             "total_price_usd": total_price_usd,
             "stripe_session_id": stripe_session_id,
-        }).execute()
+        })
         return
 
     with get_conn() as conn:
@@ -247,7 +270,7 @@ def update_job(
         updates["error"] = error
 
     if _use_supabase():
-        _get_supabase().table("jobs").update(updates).eq("id", job_id).execute()
+        _sb_patch("jobs", updates, params={"id": f"eq.{job_id}"})
         return
 
     fields: list[str] = []
@@ -264,8 +287,7 @@ def update_job(
 
 def get_job(job_id: str) -> JobRow | None:
     if _use_supabase():
-        result = _get_supabase().table("jobs").select("*").eq("id", job_id).execute()
-        rows = result.data
+        rows = _sb_get("jobs", {"select": "*", "id": f"eq.{job_id}"})
         return _row_from_supabase(rows[0]) if rows else None
 
     with get_conn() as conn:
@@ -275,8 +297,7 @@ def get_job(job_id: str) -> JobRow | None:
 
 def get_job_by_stripe_session(session_id: str) -> JobRow | None:
     if _use_supabase():
-        result = _get_supabase().table("jobs").select("*").eq("stripe_session_id", session_id).execute()
-        rows = result.data
+        rows = _sb_get("jobs", {"select": "*", "stripe_session_id": f"eq.{session_id}"})
         return _row_from_supabase(rows[0]) if rows else None
 
     with get_conn() as conn:
@@ -288,8 +309,12 @@ def get_job_by_stripe_session(session_id: str) -> JobRow | None:
 
 def list_jobs(limit: int = 50) -> list[JobRow]:
     if _use_supabase():
-        result = _get_supabase().table("jobs").select("*").order("created_at", desc=True).limit(limit).execute()
-        return [_row_from_supabase(r) for r in result.data]
+        rows = _sb_get("jobs", {
+            "select": "*",
+            "order": "created_at.desc",
+            "limit": str(limit),
+        })
+        return [_row_from_supabase(r) for r in rows]
 
     with get_conn() as conn:
         rows = conn.execute(
