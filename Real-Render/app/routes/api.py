@@ -439,26 +439,33 @@ def create_checkout(body: CheckoutRequest) -> CheckoutResponse:
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Stripe checkout failed for job %s", job_id)
+        raise HTTPException(status_code=500, detail=f"Stripe error: {exc}") from exc
 
     # Persist the job in pending_payment status
-    db.create_job(
-        job_id=job_id,
-        input_dir=str(input_dir),
-        outputs_dir=str(outputs_dir),
-        customer_ref=body.customer_ref,
-        options={
-            "property_address": body.property_address,
-            "agent_name": body.agent_name,
-            "staging_style": body.staging_style,
-        },
-        package=pkg,
-        email=body.email,
-        rooms=body.rooms,
-        addons=body.addons,
-        total_price_usd=total,
-        status="pending_payment",
-        stripe_session_id=session_id,
-    )
+    try:
+        db.create_job(
+            job_id=job_id,
+            input_dir=str(input_dir),
+            outputs_dir=str(outputs_dir),
+            customer_ref=body.customer_ref,
+            options={
+                "property_address": body.property_address,
+                "agent_name": body.agent_name,
+                "staging_style": body.staging_style,
+            },
+            package=pkg,
+            email=body.email,
+            rooms=body.rooms,
+            addons=body.addons,
+            total_price_usd=total,
+            status="pending_payment",
+            stripe_session_id=session_id,
+        )
+    except Exception as exc:
+        logger.exception("DB create_job failed for job %s", job_id)
+        raise HTTPException(status_code=500, detail=f"Database error: {exc}") from exc
 
     return CheckoutResponse(
         checkout_url=checkout_url,
