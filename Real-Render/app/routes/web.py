@@ -57,6 +57,11 @@ def create_app(enqueue_job) -> FastAPI:  # type: ignore[no-untyped-def]
         allow_headers=["*"],
     )
 
+    # Health check for Railway
+    @app.get("/health")
+    def health():
+        return {"status": "ok"}
+
     # JSON API
     set_enqueue_fn(enqueue_job)
     app.include_router(api_router)
