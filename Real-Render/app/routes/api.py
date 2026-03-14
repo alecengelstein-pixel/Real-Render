@@ -150,6 +150,21 @@ def health() -> HealthResponse:
     return HealthResponse(status="ok", storage_configured=s3_configured())
 
 
+@router.get("/packages")
+def get_packages() -> dict:
+    """Return all package info, pricing, and add-ons for the frontend."""
+    packages = {}
+    for pkg, base_price in settings.package_prices.items():
+        packages[pkg] = {
+            "base_price": base_price,
+            "per_extra_room": settings.price_per_extra_room.get(pkg, 30.0),
+        }
+    return {
+        "packages": packages,
+        "addons": settings.addon_prices,
+    }
+
+
 @router.get("/jobs", response_model=list[JobSummary])
 def list_jobs() -> list[JobSummary]:
     jobs = db.list_jobs(limit=50)
